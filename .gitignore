@@ -1,0 +1,14 @@
+# Python cache & environments
+__pycache__/
+*.pyc
+.env
+venv/
+env/
+
+# Local Data
+data/*
+!data/.gitkeep
+
+# IDE Settings
+.vscode/
+.idea/
