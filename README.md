@@ -1,4 +1,4 @@
-# 📈 Quantitative Machine Learning Stock Predictor 
+#  Quantitative Machine Learning Stock Predictor 
 
 An 8-week journey building a Quantitative Machine Learning pipeline to predict short-term stock movements on the Bombay Stock Exchange (BSE) and National Stock Exchange (NSE).
 
