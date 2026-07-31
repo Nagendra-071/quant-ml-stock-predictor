@@ -1,9 +1,20 @@
 import yfinance as yf
 import pandas as pd
+import numpy as np
 from sklearn.preprocessing import StandardScaler
 
+
+def compute_rsi(series, window=14):
+    """Calculates Relative Strength Index (RSI)."""
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(50)
+
 # end is None to fetch data up to today
-def scaled_bse_data(ticker="RELIANCE.NS", start="2024-01-01", end=None):
+def scaled_bse_data(ticker="SBIN.NS", start="2024-01-01", end=None):
     
     # Fetch price history using yfinance Ticker API
     df = yf.download(ticker, start=start, end=end, auto_adjust=False, progress=False)
@@ -21,37 +32,67 @@ def scaled_bse_data(ticker="RELIANCE.NS", start="2024-01-01", end=None):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-    # Handling missing values 
-    vol_series = df['Volume'].ffill().bfill().replace(0, 1.0)
-    close_series = df['Close'].ffill().bfill()
-    open_series = df['Open'].ffill().bfill()
+   
 
 
-    # Create  features DataFrame
-    df_features = pd.DataFrame({
-        'Volume_Raw': df['Volume'].ffill().bfill().replace(0, 1.0),
-        'Price_Change': df['Close'] - df['Open'],
-        'Daily_Return': df['Close'].pct_change(fill_method=None)
-    }, index=df.index).dropna()
+  # Clean price and volume series
+    close = df["Close"].ffill().bfill()
+    open_p = df["Open"].ffill().bfill()
+    high = df["High"].ffill().bfill()
+    low = df["Low"].ffill().bfill()
+    volume = df["Volume"].ffill().bfill().replace(0, 1.0)
+
+    #Feature Engineering 
+    log_return = np.log(close / close.shift(1))
+    sma_10 = close.rolling(window=10).mean()
+    sma_50 = close.rolling(window=50).mean()
+
+    df_features = pd.DataFrame(
+        {
+            # Base features
+            "Volume_Raw": volume,
+            "Price_Change": close - open_p,
+            "Daily_Return": close.pct_change(fill_method=None),
+           \
+            "Log_Return": log_return,
+            "HL_Spread": (high - low) / close,
+            "SMA_Spread": (sma_10 - sma_50) / sma_50,
+            "Volatility_20D": log_return.rolling(window=20).std(),
+            "RSI_14": compute_rsi(close, window=14),
+            # Supervised Target (1 = Tomorrow UP, 0 = Tomorrow DOWN)
+            "Target": (log_return.shift(-1) > 0).astype(int),
+        },
+        index=df.index,
+    ).dropna()
 
     if df_features.empty:
-        raise ValueError(f"Data became empty after calculating returns. Check column shapes.")
+        raise ValueError(
+            "Data became empty after calculating features. Check date range length."
+        )
 
-    # StandardScaler
+    # Separate target from features to scale ONLY input features (X)
+    target = df_features["Target"]
+    features_to_scale = df_features.drop(columns=["Target"])
+
+    # StandardScaler fit & transform
     scaler = StandardScaler()
-    scaled_array = scaler.fit_transform(df_features[['Volume_Raw', 'Price_Change', 'Daily_Return']])
+    scaled_array = scaler.fit_transform(features_to_scale)
 
     df_scaled = pd.DataFrame(
-        scaled_array,
-        columns=['Volume_Scaled', 'Price_Change_Scaled', 'Daily_Return_Scaled'],
-        index=df_features.index
+        scaled_array, columns=features_to_scale.columns, index=df_features.index
     )
 
+    # Re-attach target column unscaled
+    df_scaled["Target"] = target
+
     return df_features, df_scaled
+
 
 if __name__ == "__main__":
     raw_df, scaled_df = scaled_bse_data("RELIANCE.NS")
     print(f"Successfully processed {len(scaled_df)} rows!")
-    print(f"Latest Available Date in Dataset: {scaled_df.index[-1].strftime('%Y-%m-%d')}")
-    print("\nScaled Data Preview:")
+    print(
+        f"Latest Available Date in Dataset: {scaled_df.index[-1].strftime('%Y-%m-%d')}"
+    )
+    print("\nScaled Feature Matrix Preview (including Target):")
     print(scaled_df.tail(3))
