@@ -1,7 +1,6 @@
-import yfinance as yf
-import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
+import pandas as pd
+import yfinance as yf
 
 
 def compute_rsi(series, window=14):
@@ -13,36 +12,40 @@ def compute_rsi(series, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi.fillna(50)
 
+
 # end is None to fetch data up to today
-def scaled_bse_data(ticker="SBIN.NS", start="2024-01-01", end=None):
-    
+def scaled_bse_data(ticker, start="2024-01-01", end=None):
+
     # Fetch price history using yfinance Ticker API
-    df = yf.download(ticker, start=start, end=end, auto_adjust=False, progress=False)
-    
+    df = yf.download(
+        ticker, start=start, end=end, auto_adjust=False, progress=False
+    )
+
     # Fallback to alternative ticker if initial data is empty
     if df.empty or len(df) <= 2:
         alt_ticker = "RELIANCE.BO" if ".NS" in ticker else "RELIANCE.NS"
-        df = yf.download(alt_ticker, start=start, end=end, auto_adjust=False, progress=False)
+        df = yf.download(
+            alt_ticker, start=start, end=end, auto_adjust=False, progress=False
+        )
 
     # Check if dataset is empty
     if df.empty:
-        raise ValueError(f"No valid trading data found for {ticker}. Check ticker symbol or date range.")
+        raise ValueError(
+            f"No valid trading data found for {ticker}. Check ticker symbol or date range."
+        )
 
     # Flatten 2D columns to 1D arrays to prevent NaN bugs
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
-   
-
-
-  # Clean price and volume series
+    # Clean price and volume series
     close = df["Close"].ffill().bfill()
     open_p = df["Open"].ffill().bfill()
     high = df["High"].ffill().bfill()
     low = df["Low"].ffill().bfill()
     volume = df["Volume"].ffill().bfill().replace(0, 1.0)
 
-    #Feature Engineering 
+    # Feature Engineering
     log_return = np.log(close / close.shift(1))
     sma_10 = close.rolling(window=10).mean()
     sma_50 = close.rolling(window=50).mean()
@@ -53,7 +56,6 @@ def scaled_bse_data(ticker="SBIN.NS", start="2024-01-01", end=None):
             "Volume_Raw": volume,
             "Price_Change": close - open_p,
             "Daily_Return": close.pct_change(fill_method=None),
-           \
             "Log_Return": log_return,
             "HL_Spread": (high - low) / close,
             "SMA_Spread": (sma_10 - sma_50) / sma_50,
@@ -70,29 +72,12 @@ def scaled_bse_data(ticker="SBIN.NS", start="2024-01-01", end=None):
             "Data became empty after calculating features. Check date range length."
         )
 
-    # Separate target from features to scale ONLY input features (X)
-    target = df_features["Target"]
-    features_to_scale = df_features.drop(columns=["Target"])
-
-    # StandardScaler fit & transform
-    scaler = StandardScaler()
-    scaled_array = scaler.fit_transform(features_to_scale)
-
-    df_scaled = pd.DataFrame(
-        scaled_array, columns=features_to_scale.columns, index=df_features.index
-    )
-
-    # Re-attach target column unscaled
-    df_scaled["Target"] = target
-
-    return df_features, df_scaled
+    return df_features
 
 
 if __name__ == "__main__":
-    raw_df, scaled_df = scaled_bse_data("RELIANCE.NS")
-    print(f"Successfully processed {len(scaled_df)} rows!")
-    print(
-        f"Latest Available Date in Dataset: {scaled_df.index[-1].strftime('%Y-%m-%d')}"
-    )
-    print("\nScaled Feature Matrix Preview (including Target):")
-    print(scaled_df.tail(3))
+    df_features = scaled_bse_data("RELIANCE.NS")
+    print(f"Successfully processed {len(df_features)} rows!")
+    print(f"Latest Available Date in Dataset: {df_features.index[-1].strftime('%Y-%m-%d')}")
+    print("\nFeature Matrix Preview:")
+    print(df_features.tail(3))
