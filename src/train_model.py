@@ -29,7 +29,6 @@ def train_pipeline(ticker="RELIANCE.NS"):
     # Print scaled training data cleanly
     print(f"\nScaled Data Preview (Shape: {X_train_scaled.shape}):")
     print(f"Latest Available Date in Dataset: {df_features.index[-1].strftime('%Y-%m-%d')}")
-    
     print(pd.DataFrame(X_train_scaled, columns=X.columns, index=X_train.index).tail(3))
     
 
